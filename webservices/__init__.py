@@ -1,0 +1,6 @@
+#from terminalPadraoOld import handle_terminal_access
+from webservices.controlid.newAccess import handle_user_identified
+from webservices.controlid.deviceAlive import handle_device_alive
+from webservices.controlid.sincronizarImagens import sincronizarImagens
+from webservices.controlid.configurarLeitor import configurarLeitor
+from webservices.controlid.atualizarStatusLeitor import monitorarLeitores
