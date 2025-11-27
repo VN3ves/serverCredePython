@@ -1,17 +1,18 @@
 from fastapi import FastAPI, HTTPException, Request, Response, Path
 from fastapi.responses import JSONResponse
 import httpx
-import logging
 import time
 import os
 from datetime import datetime
 from config import SISTEMA_GERENCIAMENTO
 from webservices.controlid.deviceAlive import handle_device_alive
 from webservices.controlid.newAccess import handle_user_identified
+from logging_config import get_server_logger
 
 app = FastAPI()
-logging.basicConfig(filename='/var/www/server/server.log', level=logging.INFO,
-                    format='%(asctime)s - %(message)s')
+
+# Obtém o logger configurado para o servidor
+logging = get_server_logger()
 
 @app.post("/device_is_alive.fcgi")
 async def device_is_alive(request: Request):
@@ -41,7 +42,7 @@ async def new_biometric_template(request: Request):
 async def new_user_identified(request: Request):
     logging.info("Requisição em /new_user_identified.fcgi")
     try:
-        #data = await request.json()
+        data = await request.json()
 
         # response = handle_user_identified(
         #     device_id=data.get("device_id"),
@@ -64,6 +65,7 @@ async def new_user_identified(request: Request):
         #     confidence=data.get("confidence", 0.0),
         #     log_type_id=data.get("log_type_id", 1)
         # )
+        logging.info(f"Dados recebidos em /new_user_identified.fcgi: {data}")
         return JSONResponse(content={
                 'event': 6,
                 'message': 'Fora do período de acesso.',

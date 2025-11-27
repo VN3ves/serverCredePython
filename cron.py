@@ -2,18 +2,22 @@
 import datetime
 import os
 import sys
+import asyncio
 from webservices.controlid.configurarLeitor import configurarLeitor
 from webservices.controlid.atualizarStatusLeitor import monitorarLeitores
 from webservices.controlid.sincronizarImagens import sincronizarImagens
+from logging_config import get_cron_logger
 
 # Configura o timezone, se necessário
 os.environ['TZ'] = 'America/Sao_Paulo'
 
+# Obtém o logger configurado para este módulo
+logger = get_cron_logger()
+
 def log(msg):
+    """Função de compatibilidade - usa o logger configurado"""
     print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
-    
-    with open("/var/www/logs/cronControl.log", "a") as f:
-        f.write(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+    logger.info(msg)
 
 def roda_chamada_manual():
     log("Executando chamada manual")
@@ -24,9 +28,11 @@ def roda_chamada_manual():
 def tarefa_1_min():
     monitorarLeitores()
     
-def tarefa_5_min():
-    configurarLeitor()
+def tarefa_3_min():
     sincronizarImagens()
+    
+async def tarefa_5_min():
+    await configurarLeitor()
 
 def main():
     now = datetime.datetime.now()
@@ -34,13 +40,13 @@ def main():
     # A cada minuto
     tarefa_1_min()
     
-    # A cada 2 minutos
-    # if now.minute % 2 == 0:
-    #     tarefa_2_min()
+    # A cada 3 minutos
+    if now.minute % 3 == 0:
+        tarefa_3_min()
 
     # A cada 5 minutos
     if now.minute % 5 == 0:
-        tarefa_5_min()
+        asyncio.run(tarefa_5_min())
 
 
 if __name__ == "__main__":

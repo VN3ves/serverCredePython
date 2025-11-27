@@ -2,7 +2,6 @@ import sys
 import requests
 import mysql.connector
 import time
-import logging
 import os
 import fcntl
 from threading import Thread
@@ -13,13 +12,10 @@ from db.funcoes import (
     findLeitoresParaConfigurar,
     marcarLeitorConfigurado,
 )
+from logging_config import get_config_leitor_logger
 
-logging.basicConfig(
-    filename='/var/www/logs/logConfigLeitor.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Obtém o logger configurado para este módulo
+logging = get_config_leitor_logger()
 
 # Função para fazer o login no leitor
 def login(leitor):
@@ -57,45 +53,88 @@ def isSessionValid(leitor):
     except requests.exceptions.RequestException:
         return None
     
-def configurarLeitor(master_password="654123"):
+def configurarUnicoLeitor(leitor, master_password):
+    """
+    Função Worker: Executa a configuração de um único leitor.
+    Esta função será executada dentro de cada Thread.
+    """
+    session = isSessionValid(leitor)
+    
+    if not session:
+        logging.error('Sessão inválida para o leitor %s, tentando reconectar', leitor['nomeLeitor'])
+        return False
+
+    logging.info('Iniciando configuração do leitor %s', leitor['nomeLeitor'])
+    
+    try:
+        device_response = requests.post(
+            f"http://{leitor['ip']}/load_objects.fcgi?session={session}",
+            json={
+                'object': 'devices',
+                'where': [{'object': 'devices', 'field': 'ip', 'operator': '=', 'value': leitor['ip']}]
+            },
+            headers={'Content-Type': 'application/json'},
+            timeout=5
+        )
+        
+        if device_response.status_code == 200:
+            # Verificação de segurança para evitar erro de índice se a lista vier vazia
+            devices_list = device_response.json().get('devices')
+            if devices_list:
+                device_id = devices_list[0].get('id')
+                updateLeitorDeviceId(leitor['id'], device_id)
+            else:
+                logging.error('Lista de dispositivos vazia para o leitor %s', leitor['nomeLeitor'])
+                return False
+        else:
+            logging.error('Falha ao obter o ID do dispositivo para o leitor %s: %s', leitor['nomeLeitor'], device_response.text)
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        logging.error('Erro ao obter o dispositivo para o leitor %s: %s', leitor['nomeLeitor'], str(e))
+        return False
+
+    # Processo de configuração sequencial
+    server_url = leitor.get('serverUrl') + ":10080"
+    updateOrCreateServer(leitor, session, server_url)
+    changeMasterPassword(leitor, session, master_password)
+    configureMonitor(leitor, session, server_url)
+    configureRTSP(leitor, session)
+    
+    logging.info('Configuração do leitor %s concluída com sucesso', leitor['nomeLeitor'])
+    marcarLeitorConfigurado(leitor['id'])
+    return True
+
+async def configurarLeitor(master_password="654123"):
+    """
+    Função Principal: Gerencia as threads para configurar leitores em paralelo.
+    """
     leitores = findLeitoresParaConfigurar()
+    
     if not leitores:
         logging.info('Nenhum leitor facial encontrado para configuração')
         return
+
+    print(f"Leitores encontrados para configurar: {len(leitores)}")
     
+    threads = []
     for leitor in leitores:
-        session = isSessionValid(leitor)
-        if not session:
-            logging.error('Sessão inválida para o leitor %s, tentando reconectar', leitor['nomeLeitor'])
-            return False
-        logging.info('Iniciando configuração do leitor %s', leitor['nomeLeitor'])
-        try:
-                device_response = requests.post(
-                    f"http://{leitor['ip']}/load_objects.fcgi?session={session}",
-                    json={
-                        'object': 'devices',
-                        'where': [{'object': 'devices', 'field': 'ip', 'operator': '=', 'value': leitor['ip']}]
-                    },
-                    headers={'Content-Type': 'application/json'},
-                    timeout=5
-                )
-                if device_response.status_code == 200:
-                    device_id = device_response.json().get('devices')[0].get('id')
-                    updateLeitorDeviceId(leitor['id'], device_id)
-                else:
-                    logging.error('Falha ao obter o ID do dispositivo para o leitor %s: %s', leitor['nomeLeitor'], device_response.text)
-                    return False
-        except requests.exceptions.RequestException as e:
-            logging.error('Erro ao obter o dispositivo para o leitor %s: %s', leitor['nomeLeitor'], str(e))
-            return False
-        server_url = leitor.get('serverUrl') + ":10080"
-        update_or_create_server(leitor, session, server_url)
-        changeMasterPassword(leitor, session, master_password)
-        configure_monitor(leitor, session, server_url)
-        configureRTSP(leitor, session)
-        logging.info('Configuração do leitor %s concluída com sucesso', leitor['nomeLeitor'])
-        marcarLeitorConfigurado(leitor['id'])
-        return True
+        # Cria uma thread para cada leitor apontando para a função worker
+        thread = Thread(target=configurarUnicoLeitor, args=(leitor, master_password))
+        thread.daemon = True
+        thread.start()
+        threads.append(thread)
+        logging.info('Thread de configuração iniciada para o leitor %s', leitor['nomeLeitor'])
+
+    print(f"Threads de configuração iniciadas: {len(threads)}")
+
+    # Aguarda todas as threads completarem (timeout de segurança do exemplo)
+    for thread in threads:
+        thread.join(timeout=100)
+        if thread.is_alive():
+            logging.error('Thread de configuração para um leitor não finalizou no tempo esperado')
+
+    logging.info('Todas as threads de configuração finalizadas.')
     
 def configureRTSP(leitor, session):
     try:
@@ -149,7 +188,7 @@ def changeMasterPassword(leitor, session, master_password):
         logging.error('Falha ao alterar a senha mestre para o leitor %s: %s', leitor['nomeLeitor'], master_pass_response.text)
         return False
 
-def update_or_create_server(leitor, session, server_url):
+def updateOrCreateServer(leitor, session, server_url):
     logging.info('Atualizando ou criando servidor para o leitor %s', leitor['nomeLeitor'])
     try:
         exist_server_response = requests.post(
@@ -190,7 +229,7 @@ def update_or_create_server(leitor, session, server_url):
             if create_response.status_code == 200:
                 serverId = create_response.json().get('ids')[0]
                 updateLeitorServerId(leitor['id'], serverId)
-                configure_server(leitor, session, serverId)
+                configureServer(leitor, session, serverId)
             else:
                 logging.error('Falha ao criar o servidor: %s', create_response.text)
                 return False
@@ -199,7 +238,7 @@ def update_or_create_server(leitor, session, server_url):
         return False
     return True
 
-def configure_server(leitor, session, server_id):
+def configureServer(leitor, session, server_id):
     logging.info('Configurando servidor para o leitor %s', leitor['nomeLeitor'])
     try:
         config_response = requests.post(
@@ -242,7 +281,7 @@ def configure_server(leitor, session, server_id):
         return False
     return True
 
-def configure_monitor(leitor, session, server_url):
+def configureMonitor(leitor, session, server_url):
     logging.info('Configurando monitor para o leitor %s', leitor['nomeLeitor'])
     try:
         ip_sem_porta = server_url.split(':')[0]

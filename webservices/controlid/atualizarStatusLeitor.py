@@ -1,10 +1,13 @@
 import time
-import logging
 from db.funcoes import (
     findLeitores,
     updateLeitor,
 )
 from datetime import datetime, timedelta
+from logging_config import get_atualizar_status_logger
+
+# Obtém o logger configurado para este módulo
+logging = get_atualizar_status_logger()
 
 def monitorarLeitores():
     try:

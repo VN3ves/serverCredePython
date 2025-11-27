@@ -1,14 +1,14 @@
-import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from db import conectarBancoEvento, connection_pool
+import sys
+import os
+# Adiciona o diretório pai ao path para importar logging_config
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from logging_config import get_banco_logger
 
-logging.basicConfig(
-    filename='/var/www/logs/errosBanco.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Obtém o logger configurado para este módulo
+logging = get_banco_logger()
 
 def getEventoBanco(codigo: str):
     try:

@@ -24,7 +24,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 
 import requests
 import time
-import logging
 import json
 import argparse
 import base64
@@ -34,14 +33,10 @@ import fcntl
 from db import conectarBancoEvento
 from webservices.controlid.configurarLeitor import isSessionValid
 from config import SISTEMA_GERENCIAMENTO
+from logging_config import get_processar_jobs_logger
 
-# Configuração de logging
-logging.basicConfig(
-    filename='/var/www/logs/logProcessarJobsSync.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Obtém o logger configurado para este módulo
+logging = get_processar_jobs_logger()
 
 def lerImagemBase64(pathLocal, pathNuvem=None):
     """

@@ -1,7 +1,6 @@
 import sys
 import requests
 import time
-import logging
 import os
 import fcntl
 import signal
@@ -14,16 +13,13 @@ from db.funcoes import (
 from db import conectarBancoEvento
 from webservices.controlid.configurarLeitor import isSessionValid
 from config import SISTEMA_GERENCIAMENTO
+from logging_config import get_sincronizar_imagens_logger
 
-logging.basicConfig(
-    filename='/var/www/logs/logSincronizarImagens.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Obtém o logger configurado para este módulo
+logging = get_sincronizar_imagens_logger()
 
 # Timeout global para evitar que o script fique travado (em segundos)
-TIMEOUT_GLOBAL = 280  # 4min 40seg (antes dos 5 minutos do cron)
+TIMEOUT_GLOBAL = 160  # 2min 40seg (antes dos 3 minutos do cron)
 
 def lerImagemBase64(pathLocal, pathNuvem=None):
     """
