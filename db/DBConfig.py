@@ -3,7 +3,7 @@ from mysql.connector import pooling
 
 # Ajuste estes valores conforme seu ambiente:
 DB_CONFIG = {
-    "host":     "192.168.3.90",
+    "host":     "localhost",
     "port":     3306,
     "user":     "crede",
     "password": "crede@123",
